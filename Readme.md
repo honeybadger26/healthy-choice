@@ -1,4 +1,5 @@
-### A Simple CLI app for meal planning
+# healthy-choice
+A Simple CLI app for meal planning
 1. Install Java 8 or higher
 2. Install maven
 3. Run
