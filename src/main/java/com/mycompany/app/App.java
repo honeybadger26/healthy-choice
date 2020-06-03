@@ -1,17 +1,20 @@
 package com.mycompany.app;
 
-import com.mycompany.app.datamodels.Recipe;
-import com.mycompany.app.datamodels.DayList;
-import com.mycompany.app.Database;
+import com.mycompany.app.models.Recipe;
+import com.mycompany.app.database.SQLiteDB;
 import com.mycompany.app.UI;
 import com.mycompany.app.Middleware;
 
 // apis: https://rapidapi.com/blog/recipe-apis/
 
+
 public class App {
-    public static void main( String[] args ) {
+    public static void main(String[] args) {
+        // define constants
+        final int NUM_DAYS = 3;
+
         // create database instance
-        Database db = new Database();
+        SQLiteDB db = new SQLiteDB();
 
         // initialise the ui class
         UI ui = new UI();
@@ -23,72 +26,95 @@ public class App {
             "Add new recipe", 
             "Remove recipe", 
             "View recipe", 
+            "Fill based on query",
+            "Clear all recipes",
             "Quit"
         };
 
+        System.out.println();
+
         while (true) {
-            // list all days and recipes
-            DayList[] daylist = new DayList[3];
+            // list recipes for each of the 3 days
+            for (int i = 0; i < NUM_DAYS; i++) {
+                System.out.printf("Day %d", i + 1);
 
-            for (Integer i = 1; i <= 3; i++) {
-                daylist[i-1] = new DayList(i, db.getRecipes(i));
+                Recipe[] recipes = db.getRecipesForDay(i + 1);
 
-                System.out.println("Day " + Integer.toString(i));
-
-                for (Recipe recipe : daylist[i-1].getRecipes()) {
-                    System.out.println("\t" + recipe.getId() + ". " + recipe.getName());
+                if (recipes.length == 0) {
+                    System.out.print(" - no recipes\n");
+                } else {
+                    System.out.print("\n");
+                    for (Recipe recipe : recipes) {
+                        System.out.printf("  (%d) %s\n", recipe.getId(), recipe.getName());
+                    }
                 }
+
             }
 
             // get initial option
-            System.out.println("What would you like to do?");
+            System.out.print("\nWhat would you like to do?\n");
             for (int i = 0; i < options.length; i++) {
-                System.out.println(Integer.toString(i) + ". " + options[i]);
+                System.out.printf("  %d. %s\n", i, options[i]);
             }
 
-            Integer option = ui.inputRange("Enter a number> ", 0, options.length-1);
+            int option = ui.inputRange("\nEnter a number> ", 0, options.length-1);
 
-            Integer daynum = null;
-            Recipe[] recipes = null;
+            int daynum = -1;
+            int recipeid = -1;
 
-            switch(option) {
-                case 0:
-                    daynum = ui.inputRange("For which day? ", 1, 3);
-                    String query = ui.inputString("Enter search query> ");
-                    recipes = middleware.getRecipes(query);
+            switch (option) {
+                case 0: // add new recipe
+                    daynum = ui.inputRange("For which day? ", 1, NUM_DAYS);
 
-                    System.out.println("Found " + recipes.length + " recipes");
-                    for (int i = 0; i < recipes.length; i++) {
-                        System.out.println(Integer.toString(i) + ". " + recipes[i].getName());
-                    }
+                    Recipe[] recipes = null;
+
+                    do {
+                        // query api for recipes
+                        String query = ui.inputString("Enter search query> ");
+                        recipes = middleware.getRecipes(query);
+
+                        // list the found recipes
+                        ui.listRecipes(recipes);
+                    } while (recipes.length == 0);
+
 
                     // get recipe to add
-                    option = ui.inputRange("Enter recipe number to add> ", 0, recipes.length-1);
+                    option = ui.inputRange("\nEnter recipe number to add> ", 0, recipes.length-1);
 
                     // add recipe to database
-                    db.addRecipe(daynum, recipes[option]);
+                    db.addRecipeToDay(daynum, recipes[option]);
 
                     break;
-                case 1:
-                    daynum = ui.inputRange("For which day? ", 1, 3);
+                case 1: // remove recipe
+                    daynum = ui.inputRange("For which day? ", 1, NUM_DAYS);
+                    recipeid = ui.inputInt("For which recipe? Enter recipe id from above> ");
 
-                    recipes = db.getRecipes(daynum);
-
-                    // list recipes
-                    for (int i = 0; i < recipes.length; i++) {
-                        System.out.println(Integer.toString(i) + ". " + recipes[i].getName());
-                    }
-
-                    option = ui.inputRange("Enter recipe number to delete> ", 0, recipes.length-1);
-
-                    // remove recipe
-                    db.removeRecipe(daynum, recipes[option].getId());
+                    db.removeRecipeFromDay(daynum, recipeid);
 
                     break;
-                case 2:
+                case 2: // view details of a recipe
                     // todo: view recipe details like ingredients and instructions
+                    recipeid = ui.inputInt("Enter recipe id (next to recipe name above)> ");
+
+                    // fetch recipe from database
+                    Recipe recipe = db.getRecipe(recipeid);
+
+                    // print recipe details
+                    if (recipe != null) ui.printRecipe(recipe);
+
                     break;
-                case 3:
+                case 3: // fill the days with random recipes based on a given query
+                    break;
+                case 4: // clear all the recipes in the plan
+                    String confirmation = ui.inputString(
+                        "This will delete all recipes over all days. Are you sure?\n" + 
+                        "Enter 'yes' to continue or anything else to abort> "
+                    );
+
+                    if (confirmation == "yes") db.clearAllRecipes();
+
+                    break;
+                case 5: // quit program
                     return;
                 default:
                     break;

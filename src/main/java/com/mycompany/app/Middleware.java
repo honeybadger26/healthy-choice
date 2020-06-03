@@ -1,7 +1,5 @@
 package com.mycompany.app;
 
-import com.mycompany.app.datamodels.Recipe;
-
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.Iterator;
@@ -15,6 +13,10 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
+import com.mycompany.app.models.Ingredient;
+import com.mycompany.app.models.Instruction;
+import com.mycompany.app.models.Recipe;
+
 public class Middleware {
     OkHttpClient client;
 
@@ -23,6 +25,8 @@ public class Middleware {
     }
 
     public Recipe[] getRecipes(String query) {
+        System.out.print("Querying api...");
+
         // encode string query
         String encodedQuery = null;
         try {
@@ -45,15 +49,13 @@ public class Middleware {
         // query api
         String responseString = null;
         try {
-            System.out.print("Querying api...");
             Response jsonResponse = client.newCall(request).execute();
             responseString = jsonResponse.body().string();
-            System.out.print("done\n");
         } catch (IOException e) {
             System.out.println(e.getMessage());
         }
 
-        // exctract api response
+        // exctract results from api response
         JSONObject response = new JSONObject(responseString);
         JSONArray results = response.getJSONArray("results");
 
@@ -63,16 +65,22 @@ public class Middleware {
             recipes = this.addRecipe(recipes, results.getJSONObject(i));
         }
 
+        System.out.print("done\n");
+
         return recipes;
     }
 
     /**
-     * Decode recipe and add it to given recipe array
+     * Decode recipe and add it to given recipe array. 
+     * todo: this is inefficient, need to find a better way
+     * to do this
      */
     private Recipe[] addRecipe(Recipe[] recipes, JSONObject recipe) {
+        // handles the case where recipes are nested
+        // in the returned json object
         if (recipe.has("recipes")) {
             JSONArray nestedRecipes = recipe.getJSONArray("recipes");
-            Integer nestedRecipesLen = nestedRecipes.length();
+            int nestedRecipesLen = nestedRecipes.length();
 
             Recipe[] newRecipes = new Recipe[nestedRecipesLen+1];
             for (int i = 0; i < nestedRecipesLen; i++) {
@@ -81,29 +89,33 @@ public class Middleware {
             return newRecipes;
         }
 
-        String name = recipe.getString("name");
-
         // add ingredients
         JSONArray JSONIngredients = recipe.getJSONArray("sections").getJSONObject(0).getJSONArray("components");
-        String[] ingredients = new String[JSONIngredients.length()];
+        Ingredient[] ingredients = new Ingredient[JSONIngredients.length()];
+
         for (int i = 0; i < JSONIngredients.length(); i++) {
-            ingredients[i] = JSONIngredients.getJSONObject(i).getString("raw_text");
+            String text = JSONIngredients.getJSONObject(i).getString("raw_text");
+            ingredients[i] = new Ingredient(-1, text);
         }
 
         // add instructions
         JSONArray JSONInstructions = recipe.getJSONArray("instructions");
-        String[] instructions = new String[JSONInstructions.length()];
+        Instruction[] instructions = new Instruction[JSONInstructions.length()];
+
         for (int i = 0; i < JSONInstructions.length(); i++) {
-            instructions[i] = JSONInstructions.getJSONObject(i).getString("display_text");
+            String text = JSONInstructions.getJSONObject(i).getString("display_text");
+            instructions[i] = new Instruction(-1, text, i + 1);
         }
 
         int recipeLen = recipes.length;
-
         Recipe[] newRecipes = new Recipe[recipeLen+1];
+
         for (int i = 0; i < recipeLen; i++) {
             newRecipes[i] = recipes[i];
         }
-        newRecipes[recipeLen] = new Recipe(null, name, ingredients, instructions);
+
+        String name = recipe.getString("name");
+        newRecipes[recipeLen] = new Recipe(-1, name, ingredients, instructions);
 
         return newRecipes;
     }
