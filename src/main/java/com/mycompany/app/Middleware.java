@@ -17,6 +17,9 @@ import com.mycompany.app.models.Ingredient;
 import com.mycompany.app.models.Instruction;
 import com.mycompany.app.models.Recipe;
 
+/**
+ * Handles all communication with api endpoint
+ */
 public class Middleware {
     OkHttpClient client;
 
@@ -24,10 +27,17 @@ public class Middleware {
         this.client = new OkHttpClient();
     }
 
+    /**
+     * Make the request to get recipes from
+     * api endpoint
+     */
     public Recipe[] getRecipes(String query) {
+        final String API_HOST = "tasty.p.rapidapi.com";
+        final String API_KEY = "68758c6623msh2f10f92bbb6a9a9p1ad69djsne588b8d75367";
+
         System.out.print("Querying api...");
 
-        // encode string query
+        // encode string query into proper format
         String encodedQuery = null;
         try {
             encodedQuery = URLEncoder.encode(query, "UTF-8");
@@ -38,15 +48,15 @@ public class Middleware {
         // query url
         String url = "https://tasty.p.rapidapi.com/recipes/list?q=" + encodedQuery + "&from=0&sizes=20";
 
-        // build api request todo: move to own function
+        // build api request
         Request request = new Request.Builder()
             .url(url)
             .get()
-            .addHeader("x-rapidapi-host", "tasty.p.rapidapi.com")
-            .addHeader("x-rapidapi-key", "68758c6623msh2f10f92bbb6a9a9p1ad69djsne588b8d75367")
+            .addHeader("x-rapidapi-host", API_HOST)
+            .addHeader("x-rapidapi-key", API_KEY)
             .build();
 
-        // query api
+        // make the request to the api
         String responseString = null;
         try {
             Response jsonResponse = client.newCall(request).execute();
@@ -59,8 +69,8 @@ public class Middleware {
         JSONObject response = new JSONObject(responseString);
         JSONArray results = response.getJSONArray("results");
 
+        // build array of decoded recipes
         Recipe[] recipes = new Recipe[0];
-
         for (int i = 0; i < results.length(); i++) {
             recipes = this.addRecipe(recipes, results.getJSONObject(i));
         }
@@ -107,13 +117,15 @@ public class Middleware {
             instructions[i] = new Instruction(-1, text, i + 1);
         }
 
+        // copy old recipes into a new array with an empty
+        // space at the end. (this is bad, need to fix)
         int recipeLen = recipes.length;
         Recipe[] newRecipes = new Recipe[recipeLen+1];
-
         for (int i = 0; i < recipeLen; i++) {
             newRecipes[i] = recipes[i];
         }
 
+        // push new recipe to array
         String name = recipe.getString("name");
         newRecipes[recipeLen] = new Recipe(-1, name, ingredients, instructions);
 

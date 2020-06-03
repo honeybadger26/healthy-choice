@@ -13,6 +13,7 @@ import com.mycompany.app.models.Instruction;
 
 /**
  * SQLite implementation of the database
+ * This file is huuuge :(
  */
 public class SQLiteDB implements Database {
     private Connection conn;
@@ -20,8 +21,8 @@ public class SQLiteDB implements Database {
     public SQLiteDB() {
         System.out.println("Creating database...");
 
-        // define database varibles
-        String url = "jdbc:sqlite:sqlite.db";
+        // define constants
+        final String url = "jdbc:sqlite:sqlite.db";
 
         // create database
         try {
@@ -34,7 +35,7 @@ public class SQLiteDB implements Database {
     }
 
     /**
-     * Create the necessary tables
+     * Create the necessary tables and define the schema
      */
     private void createTables() {
         System.out.print("Creating tables...");
@@ -65,16 +66,15 @@ public class SQLiteDB implements Database {
             ");"
         };
 
-        try {
-            for (String cmd : cmds) {
-                this.conn
-                    .createStatement()
-                    .execute(cmd);
+        for (String cmd : cmds) {
+            try {
+                this.conn.createStatement().execute(cmd);
+            } catch (SQLException e) {
+                System.out.println(e.getMessage());
             }
-            System.out.print("done\n");
-        } catch (SQLException e) {
-            System.out.println(e.getMessage());
         }
+
+        System.out.print("done\n");
     }
 
 
@@ -85,35 +85,8 @@ public class SQLiteDB implements Database {
     public void addRecipeToDay(int daynum, Recipe recipe) {
         System.out.println("Adding recipe to day...");
 
-        // todo: move this to addRecipe
-        // return value of -1 should mean found in db
-
-        int recipeid = -1;
-        try {
-            ResultSet rs = this.conn.createStatement().executeQuery(String.format(
-                "SELECT recipeid FROM Recipes WHERE recipename='%s';",
-                recipe.getName()
-            ));
-
-            if (rs.next()) {
-                recipeid = rs.getInt("recipeid");
-                System.out.println("Recipe found in database");
-            }
-        } catch (SQLException e) { 
-            System.out.println(e.getMessage()); 
-            return;
-        }
-
-        // Add recipe if not currently stored in database
-        if (recipeid == -1) {
-            System.out.println("Recipe not found in database");
-            recipeid = this.addRecipe(recipe);
-
-            if (recipeid == -1) {
-                System.out.println("Error: Could not save new recipe");
-                return;
-            }
-        }
+        // add to Recipes table
+        int recipeid = this.addRecipe(recipe);
 
         try {
             this.conn.createStatement().execute(String.format(
@@ -130,8 +103,10 @@ public class SQLiteDB implements Database {
      */
     @Override
     public void removeRecipeFromDay(int daynum, int recipeid) {
-        System.out.print("Removing recipe from day...");
+        System.out.println("Removing recipe from day...");
 
+        // remove the first recipe enountered
+        // with given recipeid and daynum
         try {
             this.conn.createStatement().execute(String.format(
                 "DELETE FROM DayRecipe WHERE dayrecipeid IN (\n" +
@@ -143,18 +118,31 @@ public class SQLiteDB implements Database {
             System.out.println(e.getMessage());
         }
 
-        // todo: check if recipeid not in dayrecipe. then safe to 
-        // delete from recipes table
+        // check if recipeid not in DayRecipe. if not, then safe to 
+        // delete from recipes table as it is no longer being used.
+        try {
+            ResultSet rs = this.conn.createStatement().executeQuery(String.format(
+                "SELECT COUNT(*) as total FROM DayRecipe WHERE recipeid=%d;\n",
+                recipeid
+            ));
 
-        System.out.print("done\n");
+            if (rs.getInt("total") == 0) {
+                System.out.println("Recipe not used elsewhere.");
+                this.removeRecipe(recipeid);
+            };
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
     }
 
 
     /**
-     * Get all the recipe for a given day
+     * Get all the recipes for a given day
      */
     @Override
     public Recipe[] getRecipesForDay(int daynum) {
+        // first get the number of recipes in the given day.
+        // this is used to make the recipes array below
         int numRecipes = -1;
         try {
             ResultSet rs = this.conn.createStatement().executeQuery(String.format(
@@ -163,15 +151,13 @@ public class SQLiteDB implements Database {
             ));
 
             numRecipes = rs.getInt("total");
-            
-            System.out.println(numRecipes);
         } catch (SQLException e) { 
             System.out.println(e.getMessage());
             return null;
         }
 
+        // build array of recipes
         Recipe[] recipes = new Recipe[numRecipes];
-
         try {
             ResultSet rs = this.conn.createStatement().executeQuery(String.format(
                 "SELECT * FROM DayRecipe WHERE daynum=%d;",
@@ -179,7 +165,6 @@ public class SQLiteDB implements Database {
             ));
             
             int i = 0;
-
             while (rs.next()) {
                 recipes[i] = this.getRecipe(rs.getInt("recipeid"));
                 i++;
@@ -193,7 +178,8 @@ public class SQLiteDB implements Database {
     }
 
     /**
-     * Get single recipe by its id
+     * Get single recipe by its id. If not found
+     * return null
      */
     @Override
     public Recipe getRecipe(int recipeid) {
@@ -207,7 +193,6 @@ public class SQLiteDB implements Database {
                 String recipename = rs.getString("recipename");
                 Ingredient[] ingredients = this.getIngredients(recipeid);
                 Instruction[] instructions = this.getInstructions(recipeid);
-
                 return new Recipe(recipeid, recipename, ingredients, instructions);
             }
         } catch (SQLException e) { 
@@ -218,8 +203,8 @@ public class SQLiteDB implements Database {
     }
 
     /**
-     * Clear all recipes in the database.
-     * This essentially clears all data.
+     * Remove all recipes.
+     * This clears the whole database.
      */
     @Override
     public void clearAllRecipes() {
@@ -234,20 +219,21 @@ public class SQLiteDB implements Database {
 
         for (String cmd : cmds) {
             try {
-                    this.conn.createStatement().execute(cmd);
+                this.conn.createStatement().execute(cmd);
             } catch (SQLException e) {
                 System.out.println(e.getMessage());
             }
         }
 
         System.out.print("done\n");
+
     }
 
     /**
      * Close the databse connnection
      */
     @Override
-    public void close() {
+    public void cleanup() {
         try {
             this.conn.close();
         } catch (SQLException e) {
@@ -258,7 +244,22 @@ public class SQLiteDB implements Database {
     private int addRecipe(Recipe recipe) {
         System.out.println("Saving recipe to database...");
 
-        int recipeid = -1;
+        // check if the recipe is already in the ...
+        try {
+            ResultSet rs = this.conn.createStatement().executeQuery(String.format(
+                "SELECT recipeid FROM Recipes WHERE recipename='%s';",
+                recipe.getName()
+            ));
+
+            if (rs.next()) {
+                System.out.println("Recipe found in database. No need to add");
+                return rs.getInt("recipeid");
+            }
+        } catch (SQLException e) { 
+            System.out.println(e.getMessage());
+        }
+
+        // ... and if not, add it
         try {
             this.conn.createStatement().execute(String.format(
                 "INSERT INTO Recipes VALUES (NULL, '%s');",
@@ -268,38 +269,43 @@ public class SQLiteDB implements Database {
             ResultSet rs = this.conn.createStatement().getGeneratedKeys();
 
             if (rs.next()) {
-                recipeid = (int) rs.getLong(1);
+                int recipeid = (int) rs.getLong(1);
 
-                // Insert ingredients and instructions for the recipe
+                // Add ingredients and instructions for the recipe
                 this.addIngredients(recipeid, recipe.getIngredients());
                 this.addInstructions(recipeid, recipe.getInstructions());
+
+                return recipeid;
             }
         } catch (SQLException e) {
             System.out.println(e.getMessage());
         }
 
-        return recipeid;
+        return -1;
     }
 
     /**
      * Remove a single recipe from the Recipes table
      */
     private void removeRecipe(int recipeid) {
-        System.out.print("Removing recipe from database...");
+        System.out.println("Removing recipe from database...");
 
         try {
             this.conn.createStatement().execute(String.format(
                 "DELETE FROM Recipes WHERE recipeid=%d;",
                 recipeid
             ));
-            System.out.print("done\n");
+
+            // need to remove associated ingredients and instructions
+            this.removeIngredients(recipeid);
+            this.removeInstructions(recipeid);
         } catch (SQLException e) {
             System.out.println(e.getMessage());
         }
     }
 
     /**
-     * Add an list of instructions for a recipe
+     * Add a list of instructions for a recipe
      */
     private void addInstructions(int recipeid, Instruction[] instructions) {
         System.out.print("Saving instructions...");
@@ -313,7 +319,6 @@ public class SQLiteDB implements Database {
                     "INSERT INTO Instructions VALUES (NULL, '%s', %d, %d);",
                     text, order, recipeid
                 ));
-
             } catch (SQLException e) {
                 System.out.println(e.getMessage());
             }
@@ -343,8 +348,9 @@ public class SQLiteDB implements Database {
      * Get an ordered list of instructions for a given recipe
      */
     private Instruction[] getInstructions(int recipeid) {
+        // find how many instructions there are for the 
+        // recipe. used to build array below
         int numInstructions = -1;
-
         try {
             ResultSet rs = this.conn.createStatement().executeQuery(String.format(
                 "SELECT COUNT(*) as total FROM Instructions WHERE recipeid=%d;",
@@ -356,8 +362,8 @@ public class SQLiteDB implements Database {
             System.out.println(e.getMessage());
         }
 
+        // build instructions arrray
         Instruction[] instructions = new Instruction[numInstructions];
-
         try {
             ResultSet rs = this.conn.createStatement().executeQuery(String.format(
                 "SELECT * FROM Instructions WHERE recipeid=%d ORDER BY instructionorder ASC;",
@@ -382,7 +388,8 @@ public class SQLiteDB implements Database {
     }
 
     /**
-     * Add a list of ingredients for a recipe
+     * Add a list of ingredients for a recipe.
+     * Similar to addInstructions
      */
     private void addIngredients(int recipeid, Ingredient[] ingredients) {
         System.out.print("Saving ingredients...");
@@ -393,7 +400,6 @@ public class SQLiteDB implements Database {
                     "INSERT INTO Ingredients VALUES (NULL, '%s', %d);",
                     ingredient.getText(), recipeid
                 ));
-
             } catch (SQLException e) {
                 System.out.println(e.getMessage());
             }
@@ -403,7 +409,8 @@ public class SQLiteDB implements Database {
     }
 
     /**
-     * Remove all the ingredients for a recipe
+     * Remove all the ingredients for a recipe.
+     * Similar to removeInstructions
      */
     private void removeIngredients(int recipeid) {
         System.out.print("Removing ingredients...");
@@ -413,7 +420,6 @@ public class SQLiteDB implements Database {
                 "DELETE FROM Ingredients WHERE recipeid=%d;",
                 recipeid
             ));
-
             System.out.print("done\n");
         } catch (SQLException e) {
             System.out.println(e.getMessage());
@@ -421,11 +427,13 @@ public class SQLiteDB implements Database {
     }
 
     /**
-     * Get a list of all the ingredients for a recipe
+     * Get a list of all the ingredients for a recipe.
+     * Similar to getInstructions
      */
     private Ingredient[] getIngredients(int recipeid) {
+        // find number of ingredients the recipe has.
+        // used to build ingredients array below
         int numIngredients = -1;
-
         try {
             ResultSet rs = this.conn.createStatement().executeQuery(String.format(
                 "SELECT COUNT(*) as total FROM Ingredients WHERE recipeid=%d;",
@@ -437,6 +445,7 @@ public class SQLiteDB implements Database {
             System.out.println(e.getMessage());
         }
 
+        // build ingredients of array
         Ingredient[] ingredients = new Ingredient[numIngredients];
         try {
             ResultSet rs = this.conn.createStatement().executeQuery(String.format(

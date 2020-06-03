@@ -14,5 +14,5 @@ public interface Database {
 
     public void clearAllRecipes();
 
-    public void close();
+    public void cleanup();
 }
