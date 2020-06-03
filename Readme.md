@@ -2,7 +2,7 @@
 A Simple CLI app for meal planning
 
 ## Instructions
-1. Install Java 8 or higher: https://java.com/download
+1. Install JDK with Java 8 or higher: https://www.oracle.com/java/technologies/javase-downloads.html
 2. Install maven: https://maven.apache.org/install.html
 3. Run the following (or use `make && make run` as below):
 
