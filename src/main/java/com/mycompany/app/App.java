@@ -79,6 +79,7 @@ public class App {
             }
 
             app.ui.inputString("\nPress ENTER to continue...");
+            System.out.print("\n\n");
             app.ui.clearScreen();
         }
     }
